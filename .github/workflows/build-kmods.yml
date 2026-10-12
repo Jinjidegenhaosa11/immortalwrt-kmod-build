@@ -48,6 +48,8 @@ jobs:
           CONFIG_PACKAGE_kmod-nft-socket=m
           CONFIG_PACKAGE_kmod-nft-tproxy=m
           CFG
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
           make defconfig
           grep -E 'CONFIG_TARGET_mediatek|CONFIG_PACKAGE_kmod-(nf|nft)-(socket|tproxy)' .config | tee ../selected-config.txt
           grep -R -m1 -E '^LINUX_VERSION-6\.12|^KERNEL_PATCHVER' target/linux/mediatek/Makefile target/linux/generic/kernel-6.12 2>/dev/null || true
@@ -67,6 +69,7 @@ jobs:
           find src/bin -type f \( -name '*kmod*socket*.apk' -o -name '*kmod*tproxy*.apk' -o -name '*kmod*socket*.ipk' -o -name '*kmod*tproxy*.ipk' \) -exec cp -v {} results/ \; 2>/dev/null || true
           cp -f source-commit.txt selected-config.txt results/ 2>/dev/null || true
           for x in download toolchain kernel kmods; do tail -n 150 "$x.log" > "results/${x}-tail.log" 2>/dev/null || true; done
+          find src/bin -type f -name 'Packages*' -exec grep -aH -E '^(Package: kmod-(nf|nft)-(socket|tproxy)|Depends: kernel=)' {} \; > results/package-dependencies.txt 2>/dev/null || true
           echo 'EXPECTED kernel package ABI: 6.12.87~372be7641913cbee065ccbf37339ae86-r1' > results/EXPECTED.txt
           echo 'DO NOT INSTALL unless version, config, and symbol compatibility have been validated.' >> results/EXPECTED.txt
       - name: Upload diagnostic artifacts
