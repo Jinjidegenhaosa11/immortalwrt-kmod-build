@@ -21,9 +21,10 @@ jobs:
           TARGET=be263a2188
           mkdir -p results
           # Fetch all available branch and tag history before testing the short hash.
-          git clone --no-single-branch https://github.com/immortalwrt/immortalwrt.git src
+          git clone --branch 25.12-dev --no-single-branch https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git src
           cd src
           git fetch --force origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+          git remote -v > ../results/source-remote.txt
           git branch -a > ../results/source-branches.txt
           git log --all -n 30 --format='%H %cs %s' > ../results/recent-commits.txt
           if git rev-parse --verify --quiet "${TARGET}^{commit}" >/dev/null; then
@@ -31,9 +32,9 @@ jobs:
             git checkout --detach "$FULL_COMMIT"
             echo "$FULL_COMMIT" | tee ../source-commit.txt
           else
-            echo "Target source revision $TARGET is not present in publicly fetched ImmortalWrt refs." | tee ../results/source-status.txt
+            echo "Target source revision $TARGET is not present in publicly fetched chasey-dev/immortalwrt-mt798x-rebase refs." | tee ../results/source-status.txt
             echo "Do not substitute another commit: kernel ABI compatibility is not established." | tee -a ../results/source-status.txt
-            echo "::error::Cannot find $TARGET in public ImmortalWrt history. Inspect source diagnostics artifact."
+            echo "::error::Cannot find $TARGET in chasey-dev/immortalwrt-mt798x-rebase history. Inspect source diagnostics artifact."
             exit 1
           fi
       - name: Configure target and kmods
