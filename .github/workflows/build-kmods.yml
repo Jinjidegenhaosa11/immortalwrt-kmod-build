@@ -1,0 +1,62 @@
+name: Build ImmortalWrt 6.12.87 kmods (diagnostic)
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache /usr/share/dotnet /usr/local/share/powershell || true
+          df -h .
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison gawk gettext git libncurses-dev libssl-dev python3 python3-setuptools rsync unzip wget zlib1g-dev file libelf-dev libzstd-dev ccache swig time curl xz-utils patch diffutils pkgconf
+      - name: Fetch matching source revision
+        run: |
+          git clone --filter=blob:none https://github.com/immortalwrt/immortalwrt.git src
+          cd src
+          git fetch origin be263a2188 || true
+          git checkout be263a2188 || { echo 'ERROR: source revision be263a2188 unavailable; cannot safely proceed'; exit 1; }
+          git rev-parse HEAD | tee ../source-commit.txt
+      - name: Configure target and kmods
+        working-directory: src
+        run: |
+          cat > .config <<'CFG'
+          CONFIG_TARGET_mediatek=y
+          CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_PACKAGE_kmod-nf-socket=m
+          CONFIG_PACKAGE_kmod-nf-tproxy=m
+          CONFIG_PACKAGE_kmod-nft-socket=m
+          CONFIG_PACKAGE_kmod-nft-tproxy=m
+          CFG
+          make defconfig
+          grep -E 'CONFIG_TARGET_mediatek|CONFIG_PACKAGE_kmod-(nf|nft)-(socket|tproxy)' .config | tee ../selected-config.txt
+          grep -R -m1 -E '^LINUX_VERSION-6\.12|^KERNEL_PATCHVER' target/linux/mediatek/Makefile target/linux/generic/kernel-6.12 2>/dev/null || true
+      - name: Compile kernel and selected packages
+        working-directory: src
+        run: |
+          set -o pipefail
+          make -j2 download 2>&1 | tee ../download.log
+          make -j2 toolchain/install 2>&1 | tee ../toolchain.log
+          make -j2 target/linux/compile 2>&1 | tee ../kernel.log
+          make -j2 package/kernel/linux/compile 2>&1 | tee ../kmods.log
+      - name: Verify ABI and collect outputs
+        if: always()
+        run: |
+          mkdir -p results
+          find src/build_dir -name .vermagic -type f -print -exec cat {} \; > results/vermagic.txt 2>/dev/null || true
+          find src/bin -type f \( -name '*kmod*socket*.apk' -o -name '*kmod*tproxy*.apk' -o -name '*kmod*socket*.ipk' -o -name '*kmod*tproxy*.ipk' \) -exec cp -v {} results/ \; 2>/dev/null || true
+          cp -f source-commit.txt selected-config.txt results/ 2>/dev/null || true
+          for x in download toolchain kernel kmods; do tail -n 150 "$x.log" > "results/${x}-tail.log" 2>/dev/null || true; done
+          echo 'EXPECTED kernel package ABI: 6.12.87~372be7641913cbee065ccbf37339ae86-r1' > results/EXPECTED.txt
+          echo 'DO NOT INSTALL unless version, config, and symbol compatibility have been validated.' >> results/EXPECTED.txt
+      - name: Upload diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-modules-and-diagnostics
+          path: results/
+          if-no-files-found: warn
